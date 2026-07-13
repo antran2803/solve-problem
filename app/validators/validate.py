@@ -3,8 +3,8 @@
 import json
 from pathlib import Path
 from typing import Any
-
-from app.utils.text_utils import normalize_text
+import re
+from app.utils.text_utils import normalize_text , remove_vietnamese_tones, create_pattern
 
 
 DEFAULT_BAD_WORDS_PATH = Path(__file__).resolve().parents[1] / "data" / "bad_words.json"
@@ -35,25 +35,39 @@ class ValidateText:
 
     def normalize_text(self, text: str) -> str:
         return normalize_text(text)
-
-    def find_sensitive_words(self, text: str) -> list[dict[str, str]]:
+    def remove_vietnamese_tones(self, text: str) -> str:
+        return remove_vietnamese_tones(text)
+    def create_pattern(self, normalized_word: str) -> str:
+        return create_pattern(normalized_word)
+    def find_sensitive_words(self, normalized_text: str) -> list[dict[str, str]]:
         sensitive_words = []
-
+        unsigned_text = self.remove_vietnamese_tones(normalized_text)
         for category, words in self.bad_words.items():
             for word in words:
                 normalized_word = self.normalize_text(word)
-                if normalized_word in text:
-                    sensitive_words.append(
-                        {
-                            "category": self.CATEGORY_NAMES.get(category, category),
-                            "word": word,
-                        }
-                    )
+                pattern = self.create_pattern(normalized_word)
+                matched = re.search(pattern, normalized_text)
+                unsigned_word = self.remove_vietnamese_tones(normalized_word)
+                if (
+                    not matched
+                    and unsigned_word != normalized_word
+                    and " " in normalized_word
+                ):
+                    unsigned_pattern = self.create_pattern(unsigned_word)
+                    matched = re.search(unsigned_pattern, unsigned_text)
+
+                if matched:
+                    sensitive_words.append({
+                        "category": self.CATEGORY_NAMES.get(
+                            category,
+                            category,
+                        ),
+                        "word": word,
+                    })
 
         return sensitive_words
 
     def validate(self, text: str) -> dict[str, Any]:
-        """Kiểm tra độ dài và từ cấm, sau đó trả về kết quả có cấu trúc."""
         normalized_text = self.normalize_text(text)
 
         if len(normalized_text) > 100:

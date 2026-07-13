@@ -58,10 +58,9 @@ class Validate_Text_3(Validate_Text):
                 for character in part
             ]
 
-            # ngu → n\s*g\s*u
+            # VD: "từ cấm" -> "từ\s*cấm"
             flexible_parts.append(r"\s*".join(characters))
 
-        # Cụm nhiều từ cần có khoảng trắng giữa các từ
         flexible_word = r"\s+".join(flexible_parts)
 
         return rf"(?<!\w){flexible_word}(?!\w)"
