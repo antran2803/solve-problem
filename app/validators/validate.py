@@ -1,6 +1,7 @@
 """Thuật toán kiểm tra độ dài và từ cấm trong nội dung."""
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -36,24 +37,21 @@ class ValidateText:
     def normalize_text(self, text: str) -> str:
         return normalize_text(text)
 
-    def find_sensitive_words(self, text: str) -> list[dict[str, str]]:
+    def find_sensitive_words(self,normalized_text: str) -> list[dict[str, str]]:
         sensitive_words = []
 
         for category, words in self.bad_words.items():
             for word in words:
                 normalized_word = self.normalize_text(word)
-                if normalized_word in text:
-                    sensitive_words.append(
-                        {
-                            "category": self.CATEGORY_NAMES.get(category, category),
-                            "word": word,
-                        }
-                    )
-
+                pattern = rf"\b{re.escape(normalized_word)}\b"
+                if re.search(pattern, normalized_text):
+                    sensitive_words.append({
+                        "category": self.CATEGORY_NAMES.get(category, category),
+                        "word": word,
+                    })
         return sensitive_words
 
     def validate(self, text: str) -> dict[str, Any]:
-        """Kiểm tra độ dài và từ cấm, sau đó trả về kết quả có cấu trúc."""
         normalized_text = self.normalize_text(text)
 
         if len(normalized_text) > 100:
