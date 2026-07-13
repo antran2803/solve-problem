@@ -24,7 +24,7 @@ class Validate_Text_2(Validate_Text):
         text = unidecode(text)
 
         text = re.sub(r"[^a-z0-9\s]", "", text)
-        text = re.sub(r"(.)\1{1,}", r"\1", text)
+        text = re.sub(r"(.)\1{2,}", r"\1", text)
         text = re.sub(r"\s+", " ", text).strip()
         return text
 

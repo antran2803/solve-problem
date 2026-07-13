@@ -32,11 +32,21 @@ class Validate_Text_3(Validate_Text):
             flags=re.UNICODE,
         )
 
-        # Chỉ rút từ 3 ký tự lặp trở lên
-        text = re.sub(r"(.)\1{2,}", r"\1", text)
+     
+        text = re.sub(r"(.)\1{1,}", r"\1", text)
         text = re.sub(r"\s+", " ", text).strip()
 
         return text
+
+    def remove_vietnamese_tones(self, text):
+        text = text.replace("đ", "d").replace("Đ", "D")
+        text = unicodedata.normalize("NFD", text)
+        text = "".join(
+            character
+            for character in text
+            if not unicodedata.combining(character)
+        )
+        return unicodedata.normalize("NFC", text)
 
     def create_pattern(self, normalized_word):
         word_parts = normalized_word.split()
@@ -58,13 +68,24 @@ class Validate_Text_3(Validate_Text):
 
     def find_sensitive_words(self, normalized_text):
         sensitive_words = []
+        unsigned_text = self.remove_vietnamese_tones(normalized_text)
 
         for category, words in self.bad_words.items():
             for word in words:
                 normalized_word = self.normalize_text(word)
                 pattern = self.create_pattern(normalized_word)
+                matched = re.search(pattern, normalized_text)
 
-                if re.search(pattern, normalized_text):
+                unsigned_word = self.remove_vietnamese_tones(normalized_word)
+                if (
+                    not matched
+                    and unsigned_word != normalized_word
+                    and " " in normalized_word
+                ):
+                    unsigned_pattern = self.create_pattern(unsigned_word)
+                    matched = re.search(unsigned_pattern, unsigned_text)
+
+                if matched:
                     sensitive_words.append({
                         "category": self.CATEGORY_NAMES.get(
                             category,
