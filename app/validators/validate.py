@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 import re
-from app.utils.text_utils import normalize_text , remove_vietnamese_tones, create_pattern
+from app.utils.text_utils import normalize_text , remove_vietnamese_tones, create_pattern , analyze_text
 
 
 DEFAULT_BAD_WORDS_PATH = Path(__file__).resolve().parents[1] / "data" / "bad_words.json"
@@ -35,60 +35,87 @@ class ValidateText:
 
     def normalize_text(self, text: str) -> str:
         return normalize_text(text)
+    def analyze_text(self, text: str) -> dict:
+        return analyze_text(text)
     def remove_vietnamese_tones(self, text: str) -> str:
         return remove_vietnamese_tones(text)
     def create_pattern(self, normalized_word: str) -> str:
         return create_pattern(normalized_word)
-    def find_sensitive_words(self, normalized_text: str) -> list[dict[str, str]]:
-        sensitive_words = []
-        unsigned_text = self.remove_vietnamese_tones(normalized_text)
+    def find_sensitive_words(self, normalized_text: str) -> list[dict]:
+        candidates = []
         for category, words in self.bad_words.items():
             for word in words:
                 normalized_word = self.normalize_text(word)
-                pattern = self.create_pattern(normalized_word)
-                matched = re.search(pattern, normalized_text)
-                unsigned_word = self.remove_vietnamese_tones(normalized_word)
-                if (
-                    not matched
-                    and unsigned_word != normalized_word
-                    and " " in normalized_word
-                ):
-                    unsigned_pattern = self.create_pattern(unsigned_word)
-                    matched = re.search(unsigned_pattern, unsigned_text)
-
+                # pattern = self.create_pattern(normalized_word)
+                # matched = re.search(pattern, normalized_text)
+                matched = None
+                match_type= None
+                exact_pattern = rf"(?<!\w){re.escape(normalized_word)}(?!\w)"
+                matched = re.search(exact_pattern, normalized_text)
                 if matched:
-                    sensitive_words.append({
-                        "category": self.CATEGORY_NAMES.get(
-                            category,
-                            category,
-                        ),
-                        "word": word,
-                    })
+                    match_type = "exact"
 
-        return sensitive_words
+                if not matched:
+                    flexible_pattern = self.create_pattern(normalized_word)
+                    matched = re.search(flexible_pattern, normalized_text)
+                    if matched:
+                        match_type = "flexible"
+                if not matched:
+                    unsigned_word = self.remove_vietnamese_tones(normalized_word)
+                    if unsigned_word != normalized_word:
+                        unsigned_pattern = self.create_pattern(unsigned_word)
+                        matched = re.search(unsigned_pattern, normalized_text)
+                        if matched:
+                            match_type = "unsigned"
+                if matched:
+                    candidates.append(
+                        {
+                            "word": word,
+                            "category": self.CATEGORY_NAMES.get(category, category),
+                            "match_type": match_type,
+                        }
+                    )
+        return candidates
 
     def validate(self, text: str) -> dict[str, Any]:
-        normalized_text = self.normalize_text(text)
-
-        if len(normalized_text) > 100:
+        if len(text) > 100:
             return {
-                "valid": False,
+                "status": "block",
                 "message": "Nội dung vượt quá 100 ký tự.",
+                "source": "rule",
+            }
+
+        analysis = self.analyze_text(text)
+        # normalized_text = self.normalize_text(text)
+        normalized_text = analysis["normalized_text"]
+        signals = analysis["signals"]
+        if not normalized_text:
+            return {
+                "status": "block",
+                "message": "Nội dung trống.",
+                "source": "rule",
             }
 
         sensitive_words = self.find_sensitive_words(normalized_text)
-        if sensitive_words:
-            details = ", ".join(
-                f"{item['word']} - {item['category']}" for item in sensitive_words
-            )
+        if sensitive_words or signals:
+            # details = ", ".join(
+            #     f"{item['word']} - {item['category']}" for item in sensitive_words
+            # )
             return {
-                "valid": False,
-                "message": f"Nội dung chứa từ cấm: {details}",
+                "status":"review",
+                "message": "Nội dung có sử dụng từ cấm hoặc dấu hiệu khả nghi cần được kiểm duyệt.",
+                "matched_words": sensitive_words,
+                "signals": signals,
+                "normalized_text": normalized_text,
+                "source": "rule",
             }
 
         return {
-            "valid": True,
+            "status": "allow",
             "message": text,
+            "matched_words": [],
+            "signals": [],
+            "source": "rule",
         }
 
     def validate_text(self, text: str):
